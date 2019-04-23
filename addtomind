@@ -1,0 +1,142 @@
+#!/bin/bash
+# This bash script will add data from a session into the MiND project directory structure
+# and add all the necessary symbolic links needed by the makefiles.
+# It requires a single command line argument which is the name of the directory in the
+# /export/subjects directory on the fMRI server (romero.engin) that you want to add.
+
+
+# First, ask the user for some information that is needed to generate the subjid and session info
+
+read -p 'Please enter the 3-digit subject number for the data you want to add: ' subjnum
+read -p 'Please enter the 5-digit exam number for the data you want to add: ' examnum
+
+prefix="tap16min00$subjnum"
+suffix="_$examnum"
+datadir=$prefix$suffix
+
+echo
+echo OK I will looking for directory $datadir on the fMRI server
+echo
+
+ageknown=0
+until [ $ageknown == 1 ]
+do
+   read -p 'Is this subject young or old (Enter either y or o): ' agegroup
+   if [ $agegroup == y ] || [ $agegroup == o ]
+   then
+      ageknown=1
+   fi
+done
+
+subject=mind$agegroup$subjnum
+
+
+sessknown=0
+until [ $sessknown == 1 ]
+do
+   read -p 'Was this a functional/diffusion session or an MRS session (Enter either f or m): ' session
+   if [ $session == f ] || [ $session == m ]
+   then
+      sessknown=1
+   fi
+done
+
+case $session in
+   f)
+      sessdir=placebodti
+      ;;
+   m)
+      sessdir=mrs
+      ;;
+   *)
+      echo Illegal session code
+      ;;
+esac
+
+
+
+# Next, copy the data from romero into the current directory (which should be /nfs/tpolk/mind/incoming
+echo
+echo Thanks. Now copying over the data from the fMRI server.
+echo
+echo The server will request the password for fmriuser.
+echo
+rsync -av fmriuser@singer.engin.umich.edu:/export/archive/birb/$datadir .
+
+
+
+# Now make subject directory
+echo
+echo
+echo Now making the subject directory and subdirectories and moving the data to the appropriate subdirectory
+echo
+
+subjdir=/nfs/tpolk/mind/subjects/$subject
+if [ ! -d "$subjdir" ]
+then
+   mkdir $subjdir
+   mkdir $subjdir/mrs
+   mkdir $subjdir/placebodti
+   ln -s /nfs/tpolk/mind/lib/makefiles/makefile_freesurfer_new.mk $subjdir/Makefile
+fi
+
+# And move the data from incoming into the newly created subject directory (except for raw)
+
+mv $datadir/* $subjdir/$sessdir
+mv $subjdir/$sessdir/raw $datadir
+chmod -R g+wx $subjdir/$sessdir
+
+# Now make all the symbolic links and the FSFAST directories
+echo
+echo
+echo Now making all the symbolic links
+echo
+
+
+case $session in
+   f)
+      datapath=$subjdir/placebodti/func
+      audpath=$datapath/auditory/run_01
+      vispath=$datapath/visual/run_01
+      motpath=$datapath/motor/run_01
+      restpath=$datapath/connectivity/run_01
+      ln -s $audpath /nfs/tpolk/mind/expt-auditory/placebo/$subject
+      ln -s $vispath /nfs/tpolk/mind/expt-visual/placebo/$subject
+      ln -s $motpath /nfs/tpolk/mind/expt-motor/placebo/$subject
+      ln -s $restpath /nfs/tpolk/mind/expt-rest/placebo/$subject
+      ln -s /nfs/tpolk/mind/lib/makefiles/makefile_subject_new.mk $audpath/Makefile
+      ln -s /nfs/tpolk/mind/lib/makefiles/makefile_subject_new.mk $vispath/Makefile
+      ln -s /nfs/tpolk/mind/lib/makefiles/makefile_subject_new.mk $motpath/Makefile
+      ln -s /nfs/tpolk/mind/lib/makefiles/makefile_subject_new.mk $restpath/Makefile
+      fsfastdir=/nfs/tpolk/mind/freesurfer/func/p$subject
+      mkdir $fsfastdir
+      ln -s /nfs/tpolk/mind/lib/makefiles/makefile_fsfast_new.mk $fsfastdir/Makefile
+      mkdir $fsfastdir/auditory
+      mkdir $fsfastdir/visual
+      mkdir $fsfastdir/motor
+      mkdir $fsfastdir/auditory/001
+      mkdir $fsfastdir/visual/001
+      mkdir $fsfastdir/motor/001
+      ln -s $audpath/tprun_01.nii $fsfastdir/auditory/001/f.nii
+      ln -s $vispath/tprun_01.nii $fsfastdir/visual/001/f.nii
+      ln -s $motpath/tprun_01.nii $fsfastdir/motor/001/f.nii
+      ln -s /nfs/tpolk/mind/lib/Music.Speech.par $fsfastdir/auditory/001/Music.Speech.par
+      ln -s /nfs/tpolk/mind/lib/House.Face.par $fsfastdir/visual/001/House.Face.par
+      ln -s /nfs/tpolk/mind/lib/Right.Left.par $fsfastdir/motor/001/Right.Left.par
+      ln -s /nfs/tpolk/mind/lib/Music.Speech.12blks.par $fsfastdir/auditory/001/Music.Speech.12blks.par
+      ln -s /nfs/tpolk/mind/lib/House.Face.12blks.par $fsfastdir/visual/001/House.Face.12blks.par
+      ln -s /nfs/tpolk/mind/lib/Right.Left.12blks.par $fsfastdir/motor/001/Right.Left.12blks.par
+      dtipath=$subjdir/placebodti/DTI
+      ln -s $dtipath /nfs/tpolk/mind/dti/$subject
+      ln -s /nfs/tpolk/mind/lib/makefiles/makefile_subject_new.mk $dtipath/Makefile
+      ;;
+   m)
+      mrspath=$subjdir/mrs/spectro
+      ln -s $mrspath /nfs/tpolk/mind/mrs/$subject
+      ln -s /nfs/tpolk/mind/lib/makefiles/makefile_subject_new.mk $mrspath/Makefile
+      ;;
+   *)
+      echo Illegal session code
+      ;;
+esac
+
